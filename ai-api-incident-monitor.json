@@ -1,0 +1,1173 @@
+{
+  "name": "AI-Powered API Reliability Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api-monitor",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -576,
+        112
+      ],
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "123805f9-bfad-4af9-be16-79908c1e66d1",
+              "name": "testName",
+              "value": "={{ $json.body?.testName ?? \"Posts API monitoring\" }}",
+              "type": "string"
+            },
+            {
+              "id": "2450a6eb-2aa0-4153-a79c-96b9827ad6a8",
+              "name": "serviceName",
+              "value": "={{ $json.body?.serviceName ?? \"Posts API\" }}",
+              "type": "string"
+            },
+            {
+              "id": "76676594-a381-4a51-9e8a-8389b1e19a81",
+              "name": "url",
+              "value": "={{ $json.body?.url ?? \"https://jsonplaceholder.typicode.com/posts/1\" }}",
+              "type": "string"
+            },
+            {
+              "id": "29f3a5ea-bf4c-4cc1-b673-ed9a9ff9d5ad",
+              "name": "method",
+              "value": "={{ $json.body?.method ?? \"GET\" }}",
+              "type": "string"
+            },
+            {
+              "id": "2cdb131d-9124-453c-8cd5-e5e0f16953ee",
+              "name": "expectedStatus",
+              "value": "={{ $json.body?.expectedStatus ?? 200 }}",
+              "type": "number"
+            },
+            {
+              "id": "a20eee1d-00cc-451c-bfd5-794588f9b7a4",
+              "name": "maxResponseTime",
+              "value": "={{ $json.body?.maxResponseTime ?? 1000 }}",
+              "type": "number"
+            },
+            {
+              "id": "292ab3b9-5c21-4e36-88ce-b099a7a88e04",
+              "name": "requiredFields",
+              "value": "={{ $json.body?.requiredFields ?? [\"userId\", \"id\", \"title\", \"body\"] }}",
+              "type": "array"
+            },
+            {
+              "id": "729bddde-6115-4f5d-aabe-909e20367660",
+              "name": "expectedValues",
+              "value": "={{ $json.body?.expectedValues ?? {\"id\": 1} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -368,
+        0
+      ],
+      "name": "Test Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nreturn [\n  {\n    json: {\n      ...input,\n      requestStartedAt: Date.now()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        0
+      ],
+      "name": "Start Timer"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -80,
+        0
+      ],
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst config = $('Start Timer').first().json;\n\nconst responseTime = Date.now() - config.requestStartedAt;\n\nconst responseBody = response.body ?? {};\n\n// 1. HTTP STATUS CHECK\nconst statusPassed =\n  response.statusCode === config.expectedStatus;\n\n// 2. RESPONSE TIME CHECK\nconst responseTimePassed =\n  responseTime <= config.maxResponseTime;\n\n// 3. REQUIRED FIELDS CHECK\nconst requiredFields = config.requiredFields || [];\n\nconst missingFields = requiredFields.filter(\n  field => !(field in responseBody)\n);\n\nconst requiredFieldsPassed =\n  missingFields.length === 0;\n\n// 4. EXPECTED VALUES CHECK\nconst expectedValues = config.expectedValues || {};\n\nconst incorrectValues = [];\n\nfor (const [key, expectedValue] of Object.entries(expectedValues)) {\n  if (responseBody[key] !== expectedValue) {\n    incorrectValues.push({\n      field: key,\n      expected: expectedValue,\n      actual: responseBody[key]\n    });\n  }\n}\n\nconst expectedValuesPassed =\n  incorrectValues.length === 0;\n\n// 5. RESPONSE STRUCTURE CHECK\nconst responseStructurePassed =\n  responseBody !== null &&\n  typeof responseBody === 'object' &&\n  !Array.isArray(responseBody);\n\n// FINAL RESULT\nlet result = 'PASS';\n\nif (\n  !statusPassed ||\n  !requiredFieldsPassed ||\n  !expectedValuesPassed ||\n  !responseStructurePassed\n) {\n  result = 'FAIL';\n} else if (!responseTimePassed) {\n  result = 'WARNING';\n}\n\nreturn [\n  {\n    json: {\n      testName: config.testName,\n      serviceName: config.serviceName,\n      testedUrl: config.url,\n\n      result,\n\n      statusCode: response.statusCode,\n      expectedStatus: config.expectedStatus,\n      statusPassed,\n\n      responseTime,\n      maxResponseTime: config.maxResponseTime,\n      responseTimePassed,\n\n      requiredFieldsPassed,\n      missingFields,\n\n      expectedValuesPassed,\n      incorrectValues,\n\n      responseStructurePassed,\n\n      testedAt: new Date().toISOString(),\n\n      responseBody\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        0
+      ],
+      "name": "Validate API Response"
+    },
+    {
+      "parameters": {
+        "tableId": "api_test_results",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "test_name",
+              "fieldValue": "={{ $json.testName }}"
+            },
+            {
+              "fieldId": "service_name",
+              "fieldValue": "={{ $json.serviceName }}"
+            },
+            {
+              "fieldId": "tested_url",
+              "fieldValue": "={{ $json.testedUrl }}"
+            },
+            {
+              "fieldId": "result",
+              "fieldValue": "={{ $json.result }}"
+            },
+            {
+              "fieldId": "status_code",
+              "fieldValue": "={{ $json.statusCode }}"
+            },
+            {
+              "fieldId": "expected_status",
+              "fieldValue": "={{ $json.expectedStatus }}"
+            },
+            {
+              "fieldId": "status_passed",
+              "fieldValue": "={{ $json.statusPassed }}"
+            },
+            {
+              "fieldId": "response_time",
+              "fieldValue": "={{ $json.responseTime }}"
+            },
+            {
+              "fieldId": "max_response_time",
+              "fieldValue": "={{ $json.maxResponseTime }}"
+            },
+            {
+              "fieldId": "response_time_passed",
+              "fieldValue": "={{ $json.responseTimePassed }}"
+            },
+            {
+              "fieldId": "required_fields_passed",
+              "fieldValue": "={{ $json.requiredFieldsPassed }}"
+            },
+            {
+              "fieldId": "missing_fields",
+              "fieldValue": "={{ $json.missingFields }}"
+            },
+            {
+              "fieldId": "expected_values_passed",
+              "fieldValue": "={{ $json.expectedValuesPassed }}"
+            },
+            {
+              "fieldId": "incorrect_values",
+              "fieldValue": "={{ $json.incorrectValues }}"
+            },
+            {
+              "fieldId": "response_structure_passed",
+              "fieldValue": "={{ $json.responseStructurePassed }}"
+            },
+            {
+              "fieldId": "tested_at",
+              "fieldValue": "={{ $json.testedAt }}"
+            },
+            {
+              "fieldId": "response_body",
+              "fieldValue": "={{ $json.responseBody }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        240,
+        0
+      ],
+      "name": "Save Test Result"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are an API reliability engineer.\n\nAnalyze the current API test incident together with the recent monitoring history.\n\nCURRENT TEST RESULT\n\nTest name: {{ $(\"Save Test Result\").first().json.test_name }}\nService: {{ $(\"Save Test Result\").first().json.service_name }}\nURL: {{ $(\"Save Test Result\").first().json.tested_url }}\n\nResult: {{ $(\"Save Test Result\").first().json.result }}\n\nHTTP status:\nActual: {{ $(\"Save Test Result\").first().json.status_code }}\nExpected: {{ $(\"Save Test Result\").first().json.expected_status }}\nStatus passed: {{ $(\"Save Test Result\").first().json.status_passed }}\n\nResponse time: {{ $(\"Save Test Result\").first().json.response_time }} ms\nMaximum allowed response time: {{ $(\"Save Test Result\").first().json.max_response_time }} ms\nResponse time passed: {{ $(\"Save Test Result\").first().json.response_time_passed }}\n\nRequired fields passed: {{ $(\"Save Test Result\").first().json.required_fields_passed }}\nMissing fields: {{ JSON.stringify($(\"Save Test Result\").first().json.missing_fields) }}\n\nExpected values passed: {{ $(\"Save Test Result\").first().json.expected_values_passed }}\nIncorrect values: {{ JSON.stringify($(\"Save Test Result\").first().json.incorrect_values) }}\n\nResponse structure passed: {{ $(\"Save Test Result\").first().json.response_structure_passed }}\n\n\nRECENT MONITORING HISTORY\n\nResults analyzed: {{ $json.analyzedResults }}\n\nPASS count: {{ $json.passCount }}\nWARNING count: {{ $json.warningCount }}\nFAIL count: {{ $json.failCount }}\n\nAverage response time: {{ $json.averageResponseTime }} ms\nLatest response time: {{ $json.latestResponseTime }} ms\n\nRecent incidents: {{ $json.recentIncidents }}\n\nTrend: {{ $json.trend }}\nLatest result: {{ $json.latestResult }}\nLatest test time: {{ $json.latestTestedAt }}\n\n\nANALYSIS\n\nProvide:\n\n1. Short diagnosis\nExplain what failed in the current API test.\n\n2. Most likely cause\nIdentify the most probable technical or configuration cause.\n\n3. Severity\nClassify the incident as:\nLOW, MEDIUM, HIGH, or CRITICAL.\n\nTake the monitoring history and trend into account when determining severity.\n\n4. Trend assessment\nExplain whether the API appears STABLE or DEGRADING based on recent monitoring results.\n\n5. Recommended actions\nProvide concise and practical steps to investigate or resolve the issue.\n\nKeep the response concise, technical, and practical."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        -160
+      ],
+      "name": "AI Failure Analysis"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "api_test_results",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Save Test Result').first().json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "ai_analysis",
+              "fieldValue": "={{ $json.output[0].content[0].text }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        -160
+      ],
+      "name": "Save AI Analysis"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n{\n  status: $(\"Save Test Result\").first().json.result,\n  testName: $(\"Save Test Result\").first().json.test_name,\n  serviceName: $(\"Save Test Result\").first().json.service_name,\n  testedUrl: $(\"Save Test Result\").first().json.tested_url,\n  statusCode: $(\"Save Test Result\").first().json.status_code,\n  expectedStatus: $(\"Save Test Result\").first().json.expected_status,\n  responseTime: $(\"Save Test Result\").first().json.response_time,\n  message: \"API monitoring completed successfully.\"\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1360,
+        128
+      ],
+      "name": "PASS Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n{\n  status: $(\"Save Test Result\").first().json.result,\n  testName: $(\"Save Test Result\").first().json.test_name,\n  serviceName: $(\"Save Test Result\").first().json.service_name,\n  testedUrl: $(\"Save Test Result\").first().json.tested_url,\n  statusCode: $(\"Save Test Result\").first().json.status_code,\n  expectedStatus: $(\"Save Test Result\").first().json.expected_status,\n  responseTime: $(\"Save Test Result\").first().json.response_time,\n  aiAnalysis: $(\"Save AI Analysis\").first().json.ai_analysis\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1952,
+        -160
+      ],
+      "name": "FAIL/WARNING Response"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "api_test_results",
+        "limit": 10,
+        "orderBy": "created_at.desc",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "service_name",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Save Test Result\").first().json.service_name }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ],
+      "name": "Get Previous Results"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.all().map(item => item.json);\n\n// Sort newest → oldest\nresults.sort((a, b) => new Date(b.tested_at) - new Date(a.tested_at));\n\nconst recent = results.slice(0, 10);\n\nconst total = recent.length;\n\nconst passCount = recent.filter(r => r.result === 'PASS').length;\nconst warningCount = recent.filter(r => r.result === 'WARNING').length;\nconst failCount = recent.filter(r => r.result === 'FAIL').length;\n\n// Response times\nconst responseTimes = recent\n  .map(r => Number(r.response_time))\n  .filter(Number.isFinite);\n\nconst averageResponseTime = responseTimes.length\n  ? Math.round(\n      responseTimes.reduce((sum, value) => sum + value, 0) /\n      responseTimes.length\n    )\n  : 0;\n\nconst latestResponseTime =\n  recent.length > 0 && Number.isFinite(Number(recent[0].response_time))\n    ? Number(recent[0].response_time)\n    : null;\n\n// Analyze last 3 checks\nconst last3 = recent.slice(0, 3);\n\nconst recentIncidents = last3.filter(\n  r => r.result === 'FAIL' || r.result === 'WARNING'\n).length;\n\n// Determine trend\nlet trend = 'STABLE';\n\nif (recentIncidents >= 2) {\n  trend = 'DEGRADING';\n} else if (\n  latestResponseTime !== null &&\n  averageResponseTime > 0 &&\n  latestResponseTime > averageResponseTime * 1.5\n) {\n  trend = 'SLOWING_DOWN';\n}\n\nreturn [\n  {\n    json: {\n      serviceName: recent[0]?.service_name ?? null,\n      analyzedResults: total,\n\n      passCount,\n      warningCount,\n      failCount,\n\n      averageResponseTime,\n      latestResponseTime,\n\n      recentIncidents,\n      trend,\n\n      latestResult: recent[0]?.result ?? null,\n      latestTestedAt: recent[0]?.tested_at ?? null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ],
+      "name": "Trend Analysis"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3e3ba8d0-fcb7-4923-9c18-01e1a393916e",
+              "leftValue": "={{ $json.latestResult }}",
+              "rightValue": "PASS",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        0
+      ],
+      "name": "IF Incident?"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{\n`🚨 API INCIDENT DETECTED\n\nService: ${$(\"Save Test Result\").first().json.service_name}\nTest: ${$(\"Save Test Result\").first().json.test_name}\nResult: ${$(\"Save Test Result\").first().json.result}\n\n📡 HTTP Status: ${$(\"Save Test Result\").first().json.status_code}\n⏱ Response Time: ${$(\"Save Test Result\").first().json.response_time} ms\n\n📊 Trend: ${$(\"Trend Analysis\").first().json.trend}\nRecent incidents: ${$(\"Trend Analysis\").first().json.recentIncidents}/${$(\"Trend Analysis\").first().json.analyzedResults}\nAverage response time: ${$(\"Trend Analysis\").first().json.averageResponseTime} ms\n\n🤖 AI Analysis:\n${$(\"Save AI Analysis\").first().json.ai_analysis}`\n}}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1408,
+        -160
+      ],
+      "name": "Telegram Alert"
+    },
+    {
+      "parameters": {
+        "jsCode": "const test = $(\"Save Test Result\").first().json;\nconst trend = $(\"Trend Analysis\").first().json;\nconst ai = $(\"Save AI Analysis\").first().json;\n\nreturn [\n  {\n    json: {\n      timestamp: new Intl.DateTimeFormat('sv-SE', {\n      timeZone: 'Europe/Nicosia',\n      year: 'numeric',\n      month: '2-digit',\n      day: '2-digit',\n      hour: '2-digit',\n      minute: '2-digit',\n      second: '2-digit',\n      hour12: false\n    }).format(new Date()),\n\n      testName: test.test_name,\n      serviceName: test.service_name,\n      testedUrl: test.tested_url,\n\n      result: test.result,\n\n      statusCode: test.status_code,\n      expectedStatus: test.expected_status,\n      statusPassed: test.status_passed,\n\n      responseTime: test.response_time,\n      maxResponseTime: test.max_response_time,\n      responseTimePassed: test.response_time_passed,\n\n      requiredFieldsPassed: test.required_fields_passed,\n      missingFields: JSON.stringify(test.missing_fields || []),\n\n      expectedValuesPassed: test.expected_values_passed,\n      incorrectValues: JSON.stringify(test.incorrect_values || []),\n\n      responseStructurePassed: test.response_structure_passed,\n\n      trend: trend.trend,\n      analyzedResults: trend.analyzedResults,\n      passCount: trend.passCount,\n      warningCount: trend.warningCount,\n      failCount: trend.failCount,\n      recentIncidents: trend.recentIncidents,\n      averageResponseTime: trend.averageResponseTime,\n\n      aiAnalysis: ai.ai_analysis || \"\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -160
+      ],
+      "name": "Structured JSON"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "API Monitoring Logs"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "API Logs"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "testName",
+              "displayName": "testName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "serviceName",
+              "displayName": "serviceName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "testedUrl",
+              "displayName": "testedUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "result",
+              "displayName": "result",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "statusCode",
+              "displayName": "statusCode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "expectedStatus",
+              "displayName": "expectedStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "statusPassed",
+              "displayName": "statusPassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "responseTime",
+              "displayName": "responseTime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "maxResponseTime",
+              "displayName": "maxResponseTime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "responseTimePassed",
+              "displayName": "responseTimePassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "requiredFieldsPassed",
+              "displayName": "requiredFieldsPassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "missingFields",
+              "displayName": "missingFields",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "expectedValuesPassed",
+              "displayName": "expectedValuesPassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "incorrectValues",
+              "displayName": "incorrectValues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "responseStructurePassed",
+              "displayName": "responseStructurePassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "trend",
+              "displayName": "trend",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "analyzedResults",
+              "displayName": "analyzedResults",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "passCount",
+              "displayName": "passCount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "warningCount",
+              "displayName": "warningCount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "failCount",
+              "displayName": "failCount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "recentIncidents",
+              "displayName": "recentIncidents",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "averageResponseTime",
+              "displayName": "averageResponseTime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "aiAnalysis",
+              "displayName": "aiAnalysis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1776,
+        -160
+      ],
+      "name": "Save to Google Sheets"
+    },
+    {
+      "parameters": {
+        "jsCode": "const test = $(\"Save Test Result\").first().json;\nconst trend = $(\"Trend Analysis\").first().json;\n\nreturn [\n  {\n    json: {\n      timestamp: new Intl.DateTimeFormat('sv-SE', {\n      timeZone: 'Europe/Nicosia',\n      year: 'numeric',\n      month: '2-digit',\n      day: '2-digit',\n      hour: '2-digit',\n      minute: '2-digit',\n      second: '2-digit',\n      hour12: false\n      }).format(new Date()),\n      testName: test.test_name,\n      serviceName: test.service_name,\n      testedUrl: test.tested_url,\n\n      result: test.result,\n\n      statusCode: test.status_code,\n      expectedStatus: test.expected_status,\n      statusPassed: test.status_passed,\n\n      responseTime: test.response_time,\n      maxResponseTime: test.max_response_time,\n      responseTimePassed: test.response_time_passed,\n\n      requiredFieldsPassed: test.required_fields_passed,\n      missingFields: JSON.stringify(test.missing_fields || []),\n\n      expectedValuesPassed: test.expected_values_passed,\n      incorrectValues: JSON.stringify(test.incorrect_values || []),\n\n      responseStructurePassed: test.response_structure_passed,\n\n      trend: trend.trend,\n      analyzedResults: trend.analyzedResults,\n      passCount: trend.passCount,\n      warningCount: trend.warningCount,\n      failCount: trend.failCount,\n      recentIncidents: trend.recentIncidents,\n      averageResponseTime: trend.averageResponseTime,\n\n      aiAnalysis: \"\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        128
+      ],
+      "name": "Structured PASS JSON"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "API Monitoring Logs"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "API Logs"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "testName",
+              "displayName": "testName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "serviceName",
+              "displayName": "serviceName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "testedUrl",
+              "displayName": "testedUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "result",
+              "displayName": "result",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "statusCode",
+              "displayName": "statusCode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "expectedStatus",
+              "displayName": "expectedStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "statusPassed",
+              "displayName": "statusPassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "responseTime",
+              "displayName": "responseTime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "maxResponseTime",
+              "displayName": "maxResponseTime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "responseTimePassed",
+              "displayName": "responseTimePassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "requiredFieldsPassed",
+              "displayName": "requiredFieldsPassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "missingFields",
+              "displayName": "missingFields",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "expectedValuesPassed",
+              "displayName": "expectedValuesPassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "incorrectValues",
+              "displayName": "incorrectValues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "responseStructurePassed",
+              "displayName": "responseStructurePassed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "trend",
+              "displayName": "trend",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "analyzedResults",
+              "displayName": "analyzedResults",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "passCount",
+              "displayName": "passCount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "warningCount",
+              "displayName": "warningCount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "failCount",
+              "displayName": "failCount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "recentIncidents",
+              "displayName": "recentIncidents",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "averageResponseTime",
+              "displayName": "averageResponseTime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "aiAnalysis",
+              "displayName": "aiAnalysis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1152,
+        128
+      ],
+      "name": "Save PASS to Google Sheets"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -576,
+        -128
+      ],
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Test Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Config": {
+      "main": [
+        [
+          {
+            "node": "Start Timer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Timer": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Validate API Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate API Response": {
+      "main": [
+        [
+          {
+            "node": "Save Test Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Test Result": {
+      "main": [
+        [
+          {
+            "node": "Get Previous Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Failure Analysis": {
+      "main": [
+        [
+          {
+            "node": "Save AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Previous Results": {
+      "main": [
+        [
+          {
+            "node": "Trend Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trend Analysis": {
+      "main": [
+        [
+          {
+            "node": "IF Incident?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Incident?": {
+      "main": [
+        [
+          {
+            "node": "AI Failure Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Structured PASS JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Alert": {
+      "main": [
+        [
+          {
+            "node": "Structured JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured JSON": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "FAIL/WARNING Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured PASS JSON": {
+      "main": [
+        [
+          {
+            "node": "Save PASS to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save PASS to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "PASS Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Test Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
